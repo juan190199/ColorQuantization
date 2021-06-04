@@ -94,22 +94,20 @@ class HistogramPaletteBuilder:
 
 
 class MedianCutPaletteBuilder:
-    """
-
-    """
-
-    def __init__(self, exp_colors):
+    def __init__(self, n_splits):
         """
 
-        :param exp_colors: int
-            2^exp_colors is the number of colors.
-        """
-        self._exp_colors = exp_colors
+        :param n_splits: int
 
-    def _split_subspace(self, img, img_arr, n_splits):
+        """
+        self.colors = n_splits
+
+    def _split_dimension(self, img, img_arr, n_splits):
         """
 
-        :param subspace: np.ndarray of shape ()
+        :param img:
+        :param img_arr:
+        :param n_splits:
         :return:
         """
         if n_splits == 0:
@@ -121,21 +119,45 @@ class MedianCutPaletteBuilder:
         b_range = np.max(img_arr[:, 2]) - np.min(img_arr[:, 2])
 
         # Range comparison
-        max_range_subspace = 0
+        max_range_dim = 0
         if r_range >= g_range and r_range >= b_range:
-            max_range_subspace = r_range
+            max_range_dim = r_range
+            dim = 0
         elif g_range >= r_range and g_range >= b_range:
-            max_range_subspace = g_range
+            max_range_dim = g_range
+            dim = 1
         elif b_range >= r_range and b_range >= g_range:
-            max_range_subspace = b_range
+            max_range_dim = b_range
+            dim = 2
 
-        # Sort image pixels by color space with highest range
-        img_arr = img_arr[img_arr[:, max_range_subspace].argsort()]
-        # Calculate index of median
-        median_idx = int((len(img_arr) + 1) / 2)
-        # Split color space wrt median
-        self._split_subspace(img_arr[0: median_idx], n_splits - 1)
-        self._split_subspace(img_arr[median_idx:], n_splits - 1)
+        # Compute median pixel value for max range dimension
+        median_pixel = self._calculate_median(img_arr, dim)
+
+        # Determine left and right subspace
+        l_mask = img_arr[:, dim] < median_pixel
+        l_subspace_img_arr = img_arr[l_mask]
+        r_mask = img_arr[:, dim] >= median_pixel
+        r_subspace_img_arr = img_arr[~l_mask]
+
+        assert img_arr.shape[0] == l_subspace_img_arr.shape[0] + r_subspace_img_arr.shape[0]
+
+        # Split pixels into subspaces
+        self._split_dimension(img, l_subspace_img_arr, n_splits - 1)
+        self._split_dimension(img, r_subspace_img_arr, n_splits - 1)
+
+    def _calculate_median(self, img_array, dim):
+        """
+
+        :param img_array: np.ndarray of shape (n_pixels, 3)
+            Pixels belonging to specific subspace
+
+        :param dim: int
+            Dimension with max range
+
+        :return: int
+            Median of img_array within a given dimension
+        """
+        return np.median(img_array[:, dim]).astype(np.int64)
 
     def fit(self, img, img_arr):
         """
@@ -150,6 +172,8 @@ class MedianCutPaletteBuilder:
         :return: np.ndarray of shape (n_pixels, 3)
             Quantized image
         """
+        self.out = np.copy(img)
+        return self._split_dimension(img, img_arr, self.colors)
 
     def _calculate_avg_pixels(self, img, img_arr):
         """
@@ -168,5 +192,6 @@ class MedianCutPaletteBuilder:
         g_avg = np.mean(img_arr[:, 1])
         b_avg = np.mean(img_arr[:, 2])
 
-        # for data in img_arr:
+        for data in img_arr:
+            self.out[data[3]][data[4]] = [r_avg, g_avg, b_avg]
 
