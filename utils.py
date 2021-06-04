@@ -139,6 +139,7 @@ class MedianCutPaletteBuilder:
         r_mask = img_arr[:, dim] >= median_pixel
         r_subspace_img_arr = img_arr[~l_mask]
 
+        # Sanity check
         assert img_arr.shape[0] == l_subspace_img_arr.shape[0] + r_subspace_img_arr.shape[0]
 
         # Split pixels into subspaces
