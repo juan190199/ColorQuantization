@@ -8,6 +8,7 @@ class HistogramPaletteBuilder:
     Pixel-wise Vector Quantization of an image, reducing the number of colors required to show the image by splitting
     color space into buckets of the same size
     """
+
     def __init__(self, buckets_per_dim):
         """
 
@@ -90,3 +91,82 @@ class HistogramPaletteBuilder:
                 avg_arr_idx_buckets[idx] = 0.0
 
         return avg_arr_idx_buckets, bucket_mask
+
+
+class MedianCutPaletteBuilder:
+    """
+
+    """
+
+    def __init__(self, exp_colors):
+        """
+
+        :param exp_colors: int
+            2^exp_colors is the number of colors.
+        """
+        self._exp_colors = exp_colors
+
+    def _split_subspace(self, img, img_arr, n_splits):
+        """
+
+        :param subspace: np.ndarray of shape ()
+        :return:
+        """
+        if n_splits == 0:
+            self._calculate_avg_pixels(img, img_arr)
+            return
+
+        r_range = np.max(img_arr[:, 0]) - np.min(img_arr[:, 0])
+        g_range = np.max(img_arr[:, 1]) - np.min(img_arr[:, 1])
+        b_range = np.max(img_arr[:, 2]) - np.min(img_arr[:, 2])
+
+        # Range comparison
+        max_range_subspace = 0
+        if r_range >= g_range and r_range >= b_range:
+            max_range_subspace = r_range
+        elif g_range >= r_range and g_range >= b_range:
+            max_range_subspace = g_range
+        elif b_range >= r_range and b_range >= g_range:
+            max_range_subspace = b_range
+
+        # Sort image pixels by color space with highest range
+        img_arr = img_arr[img_arr[:, max_range_subspace].argsort()]
+        # Calculate index of median
+        median_idx = int((len(img_arr) + 1) / 2)
+        # Split color space wrt median
+        self._split_subspace(img_arr[0: median_idx], n_splits - 1)
+        self._split_subspace(img_arr[median_idx:], n_splits - 1)
+
+    def fit(self, img, img_arr):
+        """
+        Reduce number of colors of image by averaging pixels within buckets
+
+        :param img: np.ndarray of shape (h, w, 3)
+            Image dimension
+
+        :param img_arr: np.ndarray of shape (n_pixels, 3)
+            Image reshaped into 2D array with 3 dimensions for RGB channels
+
+        :return: np.ndarray of shape (n_pixels, 3)
+            Quantized image
+        """
+
+    def _calculate_avg_pixels(self, img, img_arr):
+        """
+        Calculate average pixel for each bucket
+
+        :para img: np.ndarray of shape (h, w, 3)
+            Image dimension
+
+        :param img_arr: np.ndarray of shape (n_pixels, 3)
+            Image reshaped into 2D array with 3 dimensions for RGB channels
+
+        :return: np.ndarray of shape (buckets_per_dim, 3), array of len n_buckets
+            Average pixel per bucket and pixels idx in respective bucket
+        """
+        r_avg = np.mean(img_arr[:, 0])
+        g_avg = np.mean(img_arr[:, 1])
+        b_avg = np.mean(img_arr[:, 2])
+
+        # for data in img_arr:
+
