@@ -1,6 +1,6 @@
 import numpy as np
 
-from sympy.utilities.iterables import multiset_combinations
+from operator import itemgetter
 
 
 class HistogramQuantization:
@@ -93,169 +93,281 @@ class HistogramQuantization:
         return avg_arr_idx_buckets, bucket_mask
 
 
-class MedianCutPaletteBuilder:
-
-    def __init__(self, n_splits):
-        """
-
-        :param n_splits: int
-
-        """
-        self.max_range_ = 255
-        self.n_splits_ = n_splits
-        self.dim_cut_ = []  # Store cuts per dimension
-
-    def _split_dimension(self, img_arr):
-        """
-
-        :param img:
-        :param img_arr:
-        :param n_splits:
-        :return:
-        """
-        # Calculate dimension with largest range
-        dim, min_idx, max_idx = self._max_range(img_arr)
-
-        # Calculate median for dimension with largest range
-        median_idx = self._calculate_median_pixel(min_idx, max_idx, dim, img_arr)
-        # Append cut
-        pix_cut_idx = median_idx.astype(np.int64)
-        pix_cut_value = img_arr[pix_cut_idx, dim]
-        self.dim_cut_.append((dim, pix_cut_value))
-
-    def _max_range(self, img_arr):
-        """
-        Calculate start point and end point of maximal range
-        :return:
-        """
-        cuts0 = np.sort([cut[1] for cut in self.dim_cut_ if cut[0] == 0] + [0, self.max_range_])
-        cuts1 = np.sort([cut[1] for cut in self.dim_cut_ if cut[0] == 1] + [0, self.max_range_])
-        cuts2 = np.sort([cut[1] for cut in self.dim_cut_ if cut[0] == 2] + [0, self.max_range_])
-
-        max = []
-        ranges0 = np.diff(cuts0)
-        max0 = np.max(ranges0)
-        max.append(max0)
-        argmax0 = np.argmax(ranges0)
-        ranges1 = np.diff(cuts1)
-        max1 = np.max(ranges1)
-        max.append(max1)
-        argmax1 = np.argmax(ranges1)
-        ranges2 = np.diff(cuts2)
-        max2 = np.max(ranges2)
-        max.append(max2)
-        argmax2 = np.argmax(ranges2)
-
-        argmax = np.argmax(max)
-
-        if argmax == 0:
-            # Dimension with largest range
-            dim = 0
-            max_cut = cuts0[argmax0 + 1]
-            min_cut = cuts0[argmax0]
-            if max_cut == self.max_range_:
-                argmax = img_arr.shape[0] - 1
-            else:
-                argmax = np.argmax(img_arr[:, dim] <= max_cut)
-            argmin = np.argmin(img_arr[:, dim] >= min_cut)
-            idx_range = img_arr[argmin:argmax, dim]
-        elif argmax == 1:
-            # Dimension with largest range
-            dim = 1
-            max_cut = cuts1[argmax1 + 1]
-            min_cut = cuts1[argmax1]
-            if max_cut == self.max_range_:
-                argmax = img_arr.shape[0] - 1
-            else:
-                argmax = np.argmax(img_arr[:, dim] <= max_cut)
-            argmin = np.argmin(img_arr[:, dim] > min_cut)
-            idx_range = img_arr[argmin:argmax, dim]
-        elif argmax == 2:
-            # Dimension with largest range
-            dim = 2
-            max_cut = cuts2[argmax2 + 1]
-            min_cut = cuts2[argmax2]
-            if max_cut == self.max_range_:
-                argmax = img_arr.shape[0] - 1
-            else:
-                argmax = np.argmax(img_arr[:, dim] <= max_cut)
-            argmin = np.argmin(img_arr[:, dim] > min_cut)
-            idx_range = img_arr[argmin:argmax, dim]
-
-        return dim, argmin, argmax
+def get_colors(image):
+    colors = image.getcolors(image.size[0] * image.size[1])
+    return [c[1] for c in colors]
 
 
+def median_cut(image, num_colors):
+    colors = get_colors(image)
+    cubes = [ColorCube(*colors)]
+    while len(cubes) < num_colors:
+        global_max_size = 0
 
-    def _calculate_median_pixel(self, sp, ep, dim, img_array):
-        """
-        :param sp: int
-            Start index for the largest range with dimension dim
+        for index, cube in enumerate(cubes):
+            size = cube.size
+            max_size = max(size)
+            max_dim = size.index(max_size)
 
-        :param ep: int
-            End index for the largest range with dimension dim
+            if max_size > global_max_size:
+                global_max_size = max_size
+                max_cube = index
 
-        :param dim: int
-            Dimension with max range
-
-        :param img_array: np.ndarray of shape (n_pixels, 3)
-            Pixels belonging to specific subspace
-
-        :return: int
-            Median of img_array within a given dimension
-        """
-        # Calculate median index for maximum range
-        return np.median(list(range(sp, ep + 1)))
-
-
-    def fit(self, img, img_arr):
-        """
-        Reduce number of colors of image by averaging pixels within buckets
-
-        :param img: np.ndarray of shape (h, w, 3)
-            Image dimension
-
-        :param img_arr: np.ndarray of shape (n_pixels, 3)
-            Pixels belonging to specific subspace
-
-        :return: np.ndarray of shape (n_pixels, 3)
-            Quantized image
-        """
-        self.out = np.copy(img)
-
-        for split in range(self.n_splits_):
-            self._split_dimension(img_arr)
-
-        # Calculate average of all subspaces
-        self._calculate_avg_pixels(img_arr)
+        split_box = cubes[max_cube]
+        cube_a, cube_b = split_box.split(max_dim)
+        cubes = cubes[:max_cube] + [cube_a, cube_b] + cubes[max_cube + 1:]
+    import pdb; pdb.set_trace()
+    return [c.average for c in cubes]
 
 
-    def _calculate_avg_pixels(self, img_arr):
-        """
-        Calculate average pixel for all subspaces
+class ColorCube(object):
+    _rmax = 255.
+    _rmin = 0.
+    _gmax = 255.
+    _gmin = 0.
+    _bmax = 255.
+    _bmin = 0.
 
-        :para img: np.ndarray of shape (h, w, 3)
-            Image dimensions
+    def __init__(self, *colors):
+        self._colors = colors or []
+        self.resize()
 
-        :param img_arr: np.ndarray of shape (n_pixels, 3)
-            Pixels belonging to specific subspace
+    @property
+    def colors(self):
+        return self._colors
 
-        :return: np.ndarray of shape (n_subspaces, 3)
-            Average pixel for all subspaces
-        """
-        medians0 = np.sort([cut[1] for cut in self.dim_medians_ if cut[0] == 0] + [0, self.max_range_])
-        medians1 = np.sort([cut[1] for cut in self.dim_medians_ if cut[0] == 1] + [0, self.max_range_])
-        medians2 = np.sort([cut[1] for cut in self.dim_medians_ if cut[0] == 2] + [0, self.max_range_])
-        # Determine ranges
-        ranges0 = np.diff(medians0)
-        ranges1 = np.diff(medians1)
-        ranges2 = np.diff(medians2)
+    @property
+    def rsize(self):
+        return self._rmax - self._rmin
 
-        i = j = k = 1
+    @property
+    def gsize(self):
+        return self._gmax - self._gmin
 
-        print(img_arr[i:i + 1, 0])
+    @property
+    def bsize(self):
+        return self._bmax - self._bmin
 
-        # Calculate subspaces
-        for i in medians0:
-            for j in medians1:
-                for k in medians2:
-                    np.mean(img_arr[i:i + 1, 0][j:j + 1, 1][k:k+1, 2])
+    @property
+    def size(self):
+        return self.rsize, self.gsize, self.bsize
+
+    def _average(self, col, length):
+        return sum(col) / length
+
+    def color_columns(self):
+        return [
+            [_[0] for _ in self.colors],
+            [_[1] for _ in self.colors],
+            [_[2] for _ in self.colors],
+        ]
+
+    @property
+    def average(self):
+        length = len(self.colors)
+        cols = self.color_columns()
+        r, g, b = [self._average(col, length) for col in cols]
+        return r, g, b
+
+    def resize(self):
+        col_r, col_g, col_b = self.color_columns()
+
+        self._rmin = min(col_r)
+        self._rmax = max(col_r)
+        self._gmin = min(col_g)
+        self._gmax = max(col_g)
+        self._bmin = min(col_b)
+        self._bmax = max(col_b)
+
+    def split(self, axis):
+        self.resize()
+        self._colors = sorted(self.colors, key=itemgetter(axis))
+
+        # Find median
+        med_idx = len(self.colors) / 2
+
+        # Create splits
+        return (
+            ColorCube(*self.colors[:med_idx]),
+            ColorCube(*self.colors[med_idx:]
+                      ))
+
+
+
+# class MedianCutQuantization:
+#
+#     def __init__(self, n_splits):
+#         """
+#
+#         :param n_splits: int
+#
+#         """
+#         self.max_range_ = 255
+#         self.n_splits_ = n_splits
+#         self.dim_cut_ = []  # Store cuts per dimension
+#
+#     def _split_dimension(self, img_arr):
+#         """
+#
+#         :param img:
+#         :param img_arr:
+#         :param n_splits:
+#         :return:
+#         """
+#         # Calculate dimension with largest range
+#         dim, min_idx, max_idx = self._max_range(img_arr)
+#
+#         # Calculate median for dimension with largest range
+#         median_idx = self._calculate_median_pixel(min_idx, max_idx, dim, img_arr)
+#         # Append cut
+#         pix_cut_idx = median_idx.astype(np.int64)
+#         pix_cut_value = img_arr[pix_cut_idx, dim]
+#         if (dim, pix_cut_value) in self.dim_cut_:
+#
+#         else:
+#             self.dim_cut_.append((dim, pix_cut_value))
+#
+#     def _max_range(self, img_arr):
+#         """
+#         Calculate start point and end point of maximal range
+#         :return:
+#         """
+#         cuts0 = np.sort([cut[1] for cut in self.dim_cut_ if cut[0] == 0] + [0, self.max_range_])
+#         cuts1 = np.sort([cut[1] for cut in self.dim_cut_ if cut[0] == 1] + [0, self.max_range_])
+#         cuts2 = np.sort([cut[1] for cut in self.dim_cut_ if cut[0] == 2] + [0, self.max_range_])
+#
+#         max = []
+#         ranges0 = np.diff(cuts0)
+#         max0 = np.max(ranges0)
+#         max.append(max0)
+#         argmax0 = np.argmax(ranges0)
+#         ranges1 = np.diff(cuts1)
+#         max1 = np.max(ranges1)
+#         max.append(max1)
+#         argmax1 = np.argmax(ranges1)
+#         ranges2 = np.diff(cuts2)
+#         max2 = np.max(ranges2)
+#         max.append(max2)
+#         argmax2 = np.argmax(ranges2)
+#
+#         argmax = np.argmax(max)
+#
+#         if argmax == 0:
+#             # Dimension with largest range
+#             dim = 0
+#             max_cut = cuts0[argmax0 + 1]
+#             min_cut = cuts0[argmax0]
+#             if max_cut == self.max_range_:
+#                 argmax = img_arr.shape[0] - 1
+#             else:
+#                 argmax = np.argmax(img_arr[:, dim] <= max_cut)
+#             argmin = np.argmin(img_arr[:, dim] >= min_cut)
+#             idx_range = img_arr[argmin:argmax, dim]
+#         elif argmax == 1:
+#             # Dimension with largest range
+#             dim = 1
+#             max_cut = cuts1[argmax1 + 1]
+#             min_cut = cuts1[argmax1]
+#             if max_cut == self.max_range_:
+#                 argmax = img_arr.shape[0] - 1
+#             else:
+#                 argmax = np.argmax(img_arr[:, dim] <= max_cut)
+#             argmin = np.argmin(img_arr[:, dim] > min_cut)
+#             idx_range = img_arr[argmin:argmax, dim]
+#         elif argmax == 2:
+#             # Dimension with largest range
+#             dim = 2
+#             max_cut = cuts2[argmax2 + 1]
+#             min_cut = cuts2[argmax2]
+#             if max_cut == self.max_range_:
+#                 argmax = img_arr.shape[0] - 1
+#             else:
+#                 argmax = np.argmax(img_arr[:, dim] <= max_cut)
+#             argmin = np.argmin(img_arr[:, dim] > min_cut)
+#             idx_range = img_arr[argmin:argmax, dim]
+#
+#         return dim, argmin, argmax
+#
+#     def _calculate_median_pixel(self, sp, ep, dim, img_array):
+#         """
+#         :param sp: int
+#             Start index for the largest range with dimension dim
+#
+#         :param ep: int
+#             End index for the largest range with dimension dim
+#
+#         :param dim: int
+#             Dimension with max range
+#
+#         :param img_array: np.ndarray of shape (n_pixels, 3)
+#             Pixels belonging to specific subspace
+#
+#         :return: int
+#             Median of img_array within a given dimension
+#         """
+#         # Calculate median index for maximum range
+#         return np.median(list(range(sp, ep + 1)))
+#
+#     def fit(self, img, img_arr):
+#         """
+#         Reduce number of colors of image by averaging pixels within buckets
+#
+#         :param img: np.ndarray of shape (h, w, 3)
+#             Image dimension
+#
+#         :param img_arr: np.ndarray of shape (n_pixels, 3)
+#             Pixels belonging to specific subspace
+#
+#         :return: np.ndarray of shape (n_pixels, 3)
+#             Quantized image
+#         """
+#         for split in range(self.n_splits_):
+#             self._split_dimension(img_arr)
+#
+#         # Calculate average of all subspaces
+#         out = self._calculate_avg_pixels(img_arr)
+#
+#         return out
+#
+#     def _calculate_avg_pixels(self, img_arr):
+#         """
+#         Calculate average pixel for all subspaces
+#
+#         :para img: np.ndarray of shape (h, w, 3)
+#             Image dimensions
+#
+#         :param img_arr: np.ndarray of shape (n_pixels, 3)
+#             Pixels belonging to specific subspace
+#
+#         :return: np.ndarray of shape (n_subspaces, 3)
+#             Average pixel for all subspaces
+#         """
+#         # ToDo: np.unique not needed if repeated cuts are not allowed
+#         cuts0 = np.sort([cut[1] for cut in self.dim_cut_ if cut[0] == 0] + [0, self.max_range_])
+#         cuts0 = np.unique(cuts0)
+#         cuts1 = np.sort([cut[1] for cut in self.dim_cut_ if cut[0] == 1] + [0, self.max_range_])
+#         cuts1 = np.unique(cuts1)
+#         cuts2 = np.sort([cut[1] for cut in self.dim_cut_ if cut[0] == 2] + [0, self.max_range_])
+#         cuts2 = np.unique(cuts2)
+#
+#         # Calculate subspaces
+#         data = []
+#         for i in range(len(cuts0) - 1):
+#             for j in range(len(cuts1) - 1):
+#                 for k in range(len(cuts2) - 1):
+#                     data_arr = np.copy(img_arr)
+#                     mask0 = np.logical_and(data_arr[:, 0] >= cuts0[i], data_arr[:, 0] < cuts0[i + 1])
+#                     data_arr = data_arr[mask0]
+#                     mask1 = np.logical_and(data_arr[:, 1] >= cuts1[j], data_arr[:, 1] < cuts1[j + 1])
+#                     data_arr = data_arr[mask1]
+#                     mask2 = np.logical_and(data_arr[:, 2] >= cuts2[k], data_arr[:, 2] < cuts2[k + 1])
+#                     data_arr = data_arr[mask2]
+#
+#                     # Compute subspace pixel average
+#                     avg = np.mean(data_arr, axis=0)
+#                     # Set all pixels to avg
+#                     data_arr[:] = avg
+#                     data.append(data_arr)
+#
+#         out = np.concatenate(data)
+#         return out
