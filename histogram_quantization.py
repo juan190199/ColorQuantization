@@ -132,23 +132,18 @@ class ColorCube(object):
         self._colors = colors or []
         self.resize()
 
-    @property
     def colors(self):
         return self._colors
 
-    @property
     def rsize(self):
         return self._rmax - self._rmin
 
-    @property
     def gsize(self):
         return self._gmax - self._gmin
 
-    @property
     def bsize(self):
         return self._bmax - self._bmin
 
-    @property
     def size(self):
         return self.rsize, self.gsize, self.bsize
 
@@ -162,7 +157,6 @@ class ColorCube(object):
             [_[2] for _ in self.colors],
         ]
 
-    @property
     def average(self):
         length = len(self.colors)
         cols = self.color_columns()
