@@ -71,3 +71,59 @@ class MedianCutQuantization:
 
         return merged
 
+
+class ColorSpace(object):
+    def __init__(self, colors):
+        """
+        Initialize ColorSpace object
+
+        :param colors: list
+            List of RGB values for all colors in image
+        """
+        self.colors_ = colors or []
+        self.red_ = [r[0] for r in colors]
+        self.green_ = [g[1] for g in colors]
+        self.blue_ = [b[2] for b in colors]
+        self.size = (max(self.red_) - min(self.red_),
+                     max(self.green_) - min(self.green_),
+                     max(self.blue_) - min(self.blue_))
+        self.max_range = max(self.size)
+
+        self.max_dim = self.size.index(self.max_range)
+
+    def avg(self):
+        """
+        Take average of pixels in a color subspace
+
+        :return: tuple of integers
+            Average of pixel values in respective subspace for all dimensions
+        """
+        r = np.mean(self.red_).astype(np.int64)
+        g = np.mean(self.green_).astype(np.int64)
+        b = np.mean(self.blue_).astype(np.int64)
+
+        return r, g, b
+
+    def split(self):
+        """
+        Split color subspace
+
+        :return: tuple of ColorSpace objects
+            Color subspaces after splitting
+        """
+        median = np.median(self.colors_).astype(np.int64)
+        # Sort the colors wrt. pixel values of dimension with max range
+        colors = sorted(self.colors_, key=lambda c: c[self.max_dim])
+        # Split colors
+        return ColorSpace(colors[:median]), ColorSpace(colors[median:])
+
+    def __lt__(self, other):
+        """
+        Comparison color spaces
+
+        :param other:
+        :return:
+        """
+        return self.max_range < other.max_range
+
+
