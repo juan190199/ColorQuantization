@@ -26,7 +26,8 @@ class MedianCutQuantization:
         :return:
         """
         merged = img.copy()
-        #  List of colors used in this image.
+        # List of colors used in this image.
+        # Obtain color for all pixels. getcolors returns number of pixels with determined RGB value
         for count, pixel in img.getcolors(img.width * img.height):
             self.colors_ += [pixel] * count
 
@@ -38,7 +39,7 @@ class MedianCutQuantization:
             color_subspaces.sort()
             color_subspaces += color_subspaces.pop().split()
 
-        # Calculate average of all subspaces
+        # Calculate average of RGB values of all subspaces
         median_cut_img = [subspace.avg() for subspace in color_subspaces]
         return self.merge_palette(merged, median_cut_img)
 
@@ -53,6 +54,7 @@ class MedianCutQuantization:
             List with RGB values of all colors in img
         :return:
         """
+        # Avoid extra columns of background color by calculating width for each color
         color_width = img.width / len(palette)
         color_height = int(max(100, color_width))
         color_size = (int(color_width), color_height)
