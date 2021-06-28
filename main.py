@@ -8,7 +8,7 @@ from viz import viz_image
 
 
 def main():
-    image_name = 'northern_lights'
+    image_name = 'parrot'
     img = Image.open('images/' + image_name + '.jpg')
 
     n_colors = 16
